@@ -1,0 +1,42 @@
+{
+  "name": "math-input-tool",
+  "version": "1.0.0",
+  "description": "一个高效的数学公式输入工具",
+  "main": "main.js",
+  "author": "dp",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "build": {
+    "appId": "com.yourname.mathinputtool",
+    "productName": "MathInputTool",
+    "win": {
+      "icon": "icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^42.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "electron-store": "^11.0.2",
+    "katex": "^0.16.45",
+    "vue": "^3.5.34"
+  }
+}

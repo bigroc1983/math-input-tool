@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    #app {
+      background: rgba(30, 30, 30, 0.95);
+      border-radius: 12px;
+      padding: 10px 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+    #search {
+      width: 100%;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #ffffff;
+      font-size: 18px;
+      padding: 8px 0;
+    }
+    #search::placeholder {
+      color: #888;
+    }
+    #preview {
+      color: #aaa;
+      font-size: 14px;
+      margin-top: 4px;
+      min-height: 20px;
+    }
+    .candidates {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+      color: #ddd;
+    }
+    .cand-item {
+      padding: 4px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .cand-item.selected {
+      background: #4a90d9;
+    }
+    .cand-item:hover {
+      background: #3a3a3a;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <input id="search" placeholder="搜索符号或公式..." autofocus>
+    <div id="preview"></div>
+    <div class="candidates" id="candidates"></div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+    const katex = require('katex');
+
+    // ========== 数学符号与函数数据库（200+）==========
+    const symbolDB = [
+      // ---------- 1. 希腊字母（小写） ----------
+      { name: '阿尔法', latex: '\\alpha', unicode: 'α', pinyin: 'aerfa alpha' },
+      { name: '贝塔', latex: '\\beta', unicode: 'β', pinyin: 'beita beta' },
+      { name: '伽马', latex: '\\gamma', unicode: 'γ', pinyin: 'gama gamma' },
+      { name: '德尔塔', latex: '\\delta', unicode: 'δ', pinyin: 'deerta delta' },
+      { name: '伊普西龙', latex: '\\epsilon', unicode: 'ε', pinyin: 'yipusilong epsilon' },
+      { name: '泽塔', latex: '\\zeta', unicode: 'ζ', pinyin: 'zeta zeta' },
+      { name: '伊塔', latex: '\\eta', unicode: 'η', pinyin: 'yita eta' },
+      { name: '西塔', latex: '\\theta', unicode: 'θ', pinyin: 'xita theta' },
+      { name: '约塔', latex: '\\iota', unicode: 'ι', pinyin: 'yueta iota' },
+      { name: '卡帕', latex: '\\kappa', unicode: 'κ', pinyin: 'kapa kappa' },
+      { name: '拉姆达', latex: '\\lambda', unicode: 'λ', pinyin: 'lamuda lambda' },
+      { name: '缪', latex: '\\mu', unicode: 'μ', pinyin: 'miu mu' },
+      { name: '纽', latex: '\\nu', unicode: 'ν', pinyin: 'niu nu' },
+      { name: '克西', latex: '\\xi', unicode: 'ξ', pinyin: 'kexi xi' },
+      { name: '欧米可戎', latex: '\\omicron', unicode: 'ο', pinyin: 'oumicrorong omicron' },
+      { name: '派', latex: '\\pi', unicode: 'π', pinyin: 'pai pi' },
+      { name: '柔', latex: '\\rho', unicode: 'ρ', pinyin: 'rou rho' },
+      { name: '西格玛', latex: '\\sigma', unicode: 'σ', pinyin: 'xigema sigma' },
+      { name: '陶', latex: '\\tau', unicode: 'τ', pinyin: 'tao tau' },
+      { name: '宇普西龙', latex: '\\upsilon', unicode: 'υ', pinyin: 'yupusilong upsilon' },
+      { name: '斐', latex: '\\phi', unicode: 'φ', pinyin: 'fei phi' },
+      { name: '卡', latex: '\\chi', unicode: 'χ', pinyin: 'ka chi' },
+      { name: '普西', latex: '\\psi', unicode: 'ψ', pinyin: 'pusi psi' },
+      { name: '欧米伽', latex: '\\omega', unicode: 'ω', pinyin: 'oumiga omega' },
+
+      // ---------- 2. 希腊字母（大写） ----------
+      { name: '大伽马', latex: '\\Gamma', unicode: 'Γ', pinyin: 'dagama Gamma' },
+      { name: '大德尔塔', latex: '\\Delta', unicode: 'Δ', pinyin: 'dadeerta Delta' },
+      { name: '大西塔', latex: '\\Theta', unicode: 'Θ', pinyin: 'daxita Theta' },
+      { name: '大拉姆达', latex: '\\Lambda', unicode: 'Λ', pinyin: 'dalamuda Lambda' },
+      { name: '大克西', latex: '\\Xi', unicode: 'Ξ', pinyin: 'dakexi Xi' },
+      { name: '大派', latex: '\\Pi', unicode: 'Π', pinyin: 'dapai Pi' },
+      { name: '大西格玛', latex: '\\Sigma', unicode: 'Σ', pinyin: 'daxigema Sigma' },
+      { name: '大宇普西龙', latex: '\\Upsilon', unicode: 'Υ', pinyin: 'dayupusilong Upsilon' },
+      { name: '大斐', latex: '\\Phi', unicode: 'Φ', pinyin: 'dafei Phi' },
+      { name: '大普西', latex: '\\Psi', unicode: 'Ψ', pinyin: 'dapusi Psi' },
+      { name: '大欧米伽', latex: '\\Omega', unicode: 'Ω', pinyin: 'daoumiga Omega' },
+
+      // ---------- 3. 运算符与关系 ----------
+      { name: '乘号', latex: '\\times', unicode: '×', pinyin: 'chenghao times' },
+      { name: '除号', latex: '\\div', unicode: '÷', pinyin: 'chuhao div' },
+      { name: '正负', latex: '\\pm', unicode: '±', pinyin: 'zhengfu pm' },
+      { name: '负正', latex: '\\mp', unicode: '∓', pinyin: 'fuzheng mp' },
+      { name: '点乘', latex: '\\cdot', unicode: '·', pinyin: 'diancheng cdot' },
+      { name: '叉乘', latex: '\\times', unicode: '×', pinyin: 'chacheng' },
+      { name: '小于等于', latex: '\\le', unicode: '≤', pinyin: 'xiaoyudengyu le' },
+      { name: '大于等于', latex: '\\ge', unicode: '≥', pinyin: 'dayudengyu ge' },
+      { name: '不等于', latex: '\\neq', unicode: '≠', pinyin: 'budengyu neq' },
+      { name: '约等于', latex: '\\approx', unicode: '≈', pinyin: 'yuedengyu approx' },
+      { name: '恒等于', latex: '\\equiv', unicode: '≡', pinyin: 'hengdengyu equiv' },
+      { name: '正比于', latex: '\\propto', unicode: '∝', pinyin: 'zhenbiyu propto' },
+      { name: '无穷', latex: '\\infty', unicode: '∞', pinyin: 'wuqiong infty' },
+      { name: '绝对值', latex: '\\vert', unicode: '|', pinyin: 'jueduizhi vert' },
+      { name: '范数', latex: '\\Vert', unicode: '‖', pinyin: 'fanshu norm' },
+      { name: '平方根', latex: '\\sqrt{}', unicode: '√', pinyin: 'pingfanggen sqrt' },
+      { name: '立方根', latex: '\\sqrt[3]{}', unicode: '∛', pinyin: 'lifanggen cuberoot' },
+      { name: '角度', latex: '^{\\circ}', unicode: '°', pinyin: 'jiaodu degree' },
+      { name: '空集', latex: '\\emptyset', unicode: '∅', pinyin: 'kongji emptyset' },
+      { name: '属于', latex: '\\in', unicode: '∈', pinyin: 'shuyu in' },
+      { name: '不属于', latex: '\\notin', unicode: '∉', pinyin: 'bushuyu notin' },
+      { name: '子集', latex: '\\subset', unicode: '⊂', pinyin: 'ziji subset' },
+      { name: '真子集', latex: '\\subseteq', unicode: '⊆', pinyin: 'zhenziji subseteq' },
+      { name: '并集', latex: '\\cup', unicode: '∪', pinyin: 'bingji cup' },
+      { name: '交集', latex: '\\cap', unicode: '∩', pinyin: 'jiaoji cap' },
+      { name: '补集', latex: '\\complement', unicode: '∁', pinyin: 'buji complement' },
+      { name: '任意', latex: '\\forall', unicode: '∀', pinyin: 'renyi forall' },
+      { name: '存在', latex: '\\exists', unicode: '∃', pinyin: 'cunzai exists' },
+      { name: '不存在', latex: '\\nexists', unicode: '∄', pinyin: 'bucunzai nexists' },
+      { name: '逻辑与', latex: '\\land', unicode: '∧', pinyin: 'luojiyu land' },
+      { name: '逻辑或', latex: '\\lor', unicode: '∨', pinyin: 'luojihuo lor' },
+      { name: '非', latex: '\\neg', unicode: '¬', pinyin: 'fei neg' },
+      { name: '推出', latex: '\\Rightarrow', unicode: '⇒', pinyin: 'tuichu Rightarrow' },
+      { name: '等价', latex: '\\Leftrightarrow', unicode: '⇔', pinyin: 'dengjia Leftrightarrow' },
+      { name: '箭头右', latex: '\\rightarrow', unicode: '→', pinyin: 'jiantouyou rightarrow' },
+      { name: '箭头左', latex: '\\leftarrow', unicode: '←', pinyin: 'jiantouzuo leftarrow' },
+      { name: '上箭头', latex: '\\uparrow', unicode: '↑', pinyin: 'shangjiantou uparrow' },
+      { name: '下箭头', latex: '\\downarrow', unicode: '↓', pinyin: 'xiajiantou downarrow' },
+      { name: '左右箭头', latex: '\\leftrightarrow', unicode: '↔', pinyin: 'zuoyoujiantou leftrightarrow' },
+      { name: '映射', latex: '\\mapsto', unicode: '↦', pinyin: 'yingshe mapsto' },
+
+      // ---------- 4. 微积分与求和求积 ----------
+      { name: '积分', latex: '\\int', unicode: '∫', pinyin: 'jifen int' },
+      { name: '二重积分', latex: '\\iint', unicode: '∬', pinyin: 'erchongjifen iint' },
+      { name: '三重积分', latex: '\\iiint', unicode: '∭', pinyin: 'sanchongjifen iiint' },
+      { name: '环积分', latex: '\\oint', unicode: '∮', pinyin: 'huanjifen oint' },
+      { name: '求和', latex: '\\sum', unicode: 'Σ', pinyin: 'qiuhe sum' },
+      { name: '乘积', latex: '\\prod', unicode: '∏', pinyin: 'chengji prod' },
+      { name: '余积', latex: '\\coprod', unicode: '∐', pinyin: 'yuji coprod' },
+      { name: '偏导', latex: '\\partial', unicode: '∂', pinyin: 'piandao partial' },
+      { name: '导数点', latex: '\\dot{x}', unicode: 'ẋ', pinyin: 'daoshudian dot' },
+      { name: '导数双点', latex: '\\ddot{x}', unicode: 'ẍ', pinyin: 'daoshus huangdian ddot' },
+      { name: '梯度', latex: '\\nabla', unicode: '∇', pinyin: 'tidu nabla' },
+      { name: '拉普拉斯', latex: '\\Delta', unicode: 'Δ', pinyin: 'lapulasi Laplace' },
+      { name: '极限', latex: '\\lim', unicode: 'lim', pinyin: 'jixian lim' },
+      { name: '最小值', latex: '\\min', unicode: 'min', pinyin: 'zuixiaozhi min' },
+      { name: '最大值', latex: '\\max', unicode: 'max', pinyin: 'zuidazhi max' },
+      { name: '下确界', latex: '\\inf', unicode: 'inf', pinyin: 'xiaquejie inf' },
+      { name: '上确界', latex: '\\sup', unicode: 'sup', pinyin: 'shangquejie sup' },
+      { name: '自变量增量', latex: '\\Delta x', unicode: 'Δx', pinyin: 'zibianliang zengliang increment' },
+
+      // ---------- 5. 函数与模板 ----------
+      { name: '正弦', latex: '\\sin', unicode: 'sin', pinyin: 'zhengxian sin' },
+      { name: '余弦', latex: '\\cos', unicode: 'cos', pinyin: 'yuxian cos' },
+      { name: '正切', latex: '\\tan', unicode: 'tan', pinyin: 'zhengqie tan' },
+      { name: '余切', latex: '\\cot', unicode: 'cot', pinyin: 'yuqie cot' },
+      { name: '正割', latex: '\\sec', unicode: 'sec', pinyin: 'zhengge sec' },
+      { name: '余割', latex: '\\csc', unicode: 'csc', pinyin: 'yuge csc' },
+      { name: '反正弦', latex: '\\arcsin', unicode: 'arcsin', pinyin: 'fanzhengxian arcsin' },
+      { name: '反余弦', latex: '\\arccos', unicode: 'arccos', pinyin: 'fanyuxian arccos' },
+      { name: '反正切', latex: '\\arctan', unicode: 'arctan', pinyin: 'fanzhengqie arctan' },
+      { name: '双曲正弦', latex: '\\sinh', unicode: 'sinh', pinyin: 'shuangquzhengxian sinh' },
+      { name: '双曲余弦', latex: '\\cosh', unicode: 'cosh', pinyin: 'shuangquyuxian cosh' },
+      { name: '对数', latex: '\\log', unicode: 'log', pinyin: 'duishu log' },
+      { name: '自然对数', latex: '\\ln', unicode: 'ln', pinyin: 'ziranduishu ln' },
+      { name: '指数', latex: '\\exp', unicode: 'exp', pinyin: 'zhishu exp' },
+      { name: '绝对值函数', latex: '\\lvert x \\rvert', unicode: '|x|', pinyin: 'jueduizhi abs' },
+      { name: '向下取整', latex: '\\lfloor x \\rfloor', unicode: '⌊x⌋', pinyin: 'xiangxiaquzheng floor' },
+      { name: '向上取整', latex: '\\lceil x \\rceil', unicode: '⌈x⌉', pinyin: 'xiangshangquzheng ceil' },
+
+      // ---------- 6. 特殊格式模板 ----------
+      { name: '分式', latex: '\\frac{□}{□}', unicode: '□/□', pinyin: 'fenshi fraction' },
+      { name: '上标', latex: '^{□}', unicode: '^□', pinyin: 'shangbiao superscript' },
+      { name: '下标', latex: '_{□}', unicode: '_□', pinyin: 'xiabiao subscript' },
+      { name: '上标下标', latex: '_{□}^{□}', unicode: '_□^□', pinyin: 'shangxiabiao' },
+      { name: '根号', latex: '\\sqrt{□}', unicode: '√(□)', pinyin: 'genhao radical' },
+      { name: 'n次根号', latex: '\\sqrt[□]{□}', unicode: '∛(□)', pinyin: 'ncigenhao' },
+      { name: '定积分', latex: '\\int_{□}^{□} □ \\,d□', unicode: '∫_□^□ □ d□', pinyin: 'dingjifen definiteintegral' },
+      { name: '求和式', latex: '\\sum_{□}^{□} □', unicode: 'Σ_□^□ □', pinyin: 'qiuheshi' },
+      { name: '极限式', latex: '\\lim_{□ \\to □} □', unicode: 'lim_{□→□} □', pinyin: 'jixianshi' },
+      { name: '矩阵2x2', latex: '\\begin{pmatrix} □ & □ \\\\ □ & □ \\end{pmatrix}', unicode: '[□ □; □ □]', pinyin: 'juzhen2x2 pmatrix' },
+      { name: '括号', latex: '\\left( □ \\right)', unicode: '(□)', pinyin: 'kuohao' },
+      { name: '方括号', latex: '\\left[ □ \\right]', unicode: '[□]', pinyin: 'fangkuohao' },
+      { name: '花括号', latex: '\\left\\{ □ \\right\\}', unicode: '{□}', pinyin: 'huakuohao' },
+      { name: '向量', latex: '\\vec{□}', unicode: '→(□)', pinyin: 'xiangliang vec' },
+      { name: '单位向量', latex: '\\hat{□}', unicode: '□̂', pinyin: 'danweixiangliang hat' },
+      { name: '波浪上标', latex: '\\tilde{□}', unicode: '□̃', pinyin: 'bolang tilde' },
+
+      // ---------- 7. 常用集合符号与数学字体 ----------
+      { name: '自然数集', latex: '\\mathbb{N}', unicode: 'ℕ', pinyin: 'ziranshuji mathbbN' },
+      { name: '整数集', latex: '\\mathbb{Z}', unicode: 'ℤ', pinyin: 'zhengshuji mathbbZ' },
+      { name: '有理数集', latex: '\\mathbb{Q}', unicode: 'ℚ', pinyin: 'youlishuji mathbbQ' },
+      { name: '实数集', latex: '\\mathbb{R}', unicode: 'ℝ', pinyin: 'shishuji mathbbR' },
+      { name: '复数集', latex: '\\mathbb{C}', unicode: 'ℂ', pinyin: 'fushuji mathbbC' },
+      { name: '手写体A', latex: '\\mathcal{A}', unicode: '𝒜', pinyin: 'shouxietiA mathcal' },
+      { name: '手写体B', latex: '\\mathcal{B}', unicode: 'ℬ', pinyin: 'shouxietiB' },
+      { name: '手写体F', latex: '\\mathcal{F}', unicode: 'ℱ', pinyin: 'shouxietiF' },
+      { name: '粗体A', latex: '\\mathbf{A}', unicode: '𝐀', pinyin: 'cutiA mathbf' },
+      { name: '粗体B', latex: '\\mathbf{B}', unicode: '𝐁', pinyin: 'cutiB' },
+      { name: '粗体E', latex: '\\mathbf{E}', unicode: '𝐄', pinyin: 'cutiE' },
+      { name: '粗体x', latex: '\\mathbf{x}', unicode: '𝐱', pinyin: 'cutix' },
+      { name: '空心A', latex: '\\mathbb{A}', unicode: '𝔸', pinyin: 'kongxinA' },
+      { name: '哥特体A', latex: '\\mathfrak{A}', unicode: '𝔄', pinyin: 'getetiA frak' },
+
+      // ---------- 8. 常用标点与杂项 ----------
+      { name: '省略号', latex: '\\dots', unicode: '…', pinyin: 'shengluehao dots' },
+      { name: '中间省略', latex: '\\cdots', unicode: '⋯', pinyin: 'zhongjianshenglue cdots' },
+      { name: '垂直省略', latex: '\\vdots', unicode: '⋮', pinyin: 'chuizhishenglue vdots' },
+      { name: '斜对角省略', latex: '\\ddots', unicode: '⋱', pinyin: 'xieduijiaoshenglue ddots' },
+      { name: '撇号', latex: '\\prime', unicode: '′', pinyin: 'piehao prime' },
+      { name: '双撇号', latex: '\\prime\\prime', unicode: '″', pinyin: 'shuangpiehao doubleprime' },
+      { name: '帽子', latex: '\\hat{}', unicode: '̂', pinyin: 'maozi hat' },
+      { name: '平均值', latex: '\\bar{}', unicode: '̅', pinyin: 'pingjunzhi bar' },
+      { name: '复共轭', latex: '\\bar{z}', unicode: 'z̅', pinyin: 'fugonge conjugate' },
+      { name: '横线', latex: '\\overline{□}', unicode: '——', pinyin: 'hengxian overline' }
+    ];
+
+    const search = document.getElementById('search');
+    const preview = document.getElementById('preview');
+    const candidates = document.getElementById('candidates');
+    let selectedIndex = 0;
+    let currentResults = [];
+
+    // 双击事件委托处理函数（防止重复绑定）
+    function handleDoubleClick(e) {
+      const item = e.target.closest('.cand-item');
+      if (!item) return;
+      const index = parseInt(item.dataset.index, 10);
+      const found = currentResults[index];
+      if (found) {
+        ipcRenderer.send('insert-text', found.unicode);
+        search.value = '';
+        candidates.innerHTML = '';
+        preview.innerHTML = '';
+        currentResults = [];
+      }
+    }
+
+    // 绑定双击委托（先解绑再绑定，确保只执行一次）
+    candidates.removeEventListener('dblclick', handleDoubleClick);
+    candidates.addEventListener('dblclick', handleDoubleClick);
+
+    // 搜索输入事件
+    search.addEventListener('input', () => {
+      const val = search.value.toLowerCase();
+      const results = symbolDB.filter(s =>
+        s.name.includes(val) || s.pinyin.includes(val) || s.latex.includes(val)
+      );
+      currentResults = results;
+
+      candidates.innerHTML = results
+        .slice(0, 5)
+        .map((s, i) =>
+          `<div class="cand-item ${i === 0 ? 'selected' : ''}" data-index="${i}">${s.unicode} ${s.name}</div>`
+        )
+        .join('');
+
+      selectedIndex = 0;
+
+      if (results.length > 0) {
+        try {
+          preview.innerHTML = katex.renderToString(results[0].latex, {
+            throwOnError: false,
+          });
+        } catch (e) {
+          preview.textContent = results[0].unicode;
+        }
+      } else {
+        preview.innerHTML = '';
+      }
+    });
+
+    // 键盘控制
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const items = document.querySelectorAll('.cand-item');
+        if (items.length === 0) return;
+        selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+        items.forEach((item, idx) => {
+          item.classList.toggle('selected', idx === selectedIndex);
+        });
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const items = document.querySelectorAll('.cand-item');
+        if (items.length === 0) return;
+        selectedIndex = Math.max(selectedIndex - 1, 0);
+        items.forEach((item, idx) => {
+          item.classList.toggle('selected', idx === selectedIndex);
+        });
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        const selected = document.querySelector('.cand-item.selected');
+        if (selected) {
+          const index = parseInt(selected.dataset.index, 10);
+          const found = currentResults[index];
+          if (found) {
+            ipcRenderer.send('insert-text', found.unicode);
+            search.value = '';
+            candidates.innerHTML = '';
+            preview.innerHTML = '';
+            currentResults = [];
+          }
+        }
+      }
+
+      if (e.key === 'Escape') {
+        ipcRenderer.send('hide-window');
+      }
+    });
+  </script>
+</body>
+</html>
